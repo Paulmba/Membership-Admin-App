@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 
-const AdminLayout = ({ children }) => {
+const AdminLayout = () => {
 	const [activeTab, setActiveTab] = useState('dashboard');
 
 	return (
@@ -11,7 +12,7 @@ const AdminLayout = ({ children }) => {
 			<div className='flex-1 flex flex-col overflow-hidden'>
 				<Header activeTab={activeTab} />
 				<main className='flex-1 overflow-y-auto p-6'>
-					{children(activeTab)}
+					<Outlet />
 				</main>
 			</div>
 		</div>

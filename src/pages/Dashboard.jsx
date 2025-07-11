@@ -1,5 +1,4 @@
 import React from 'react';
-import AdminLayout from '../layouts/MainLayout';
 import StatCard from '../components/StatCard';
 import ActivityItem from '../components/ActivityItem';
 import EventCard from '../components/EventCard';
@@ -97,66 +96,51 @@ const Dashboard = () => {
 	];
 
 	return (
-		<AdminLayout>
-			{(activeTab) =>
-				activeTab === 'dashboard' ? (
-					<>
-						<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
-							{stats.map((stat, i) => (
-								<StatCard key={i} stat={stat} />
+		<>
+			<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
+				{stats.map((stat, i) => (
+					<StatCard key={i} stat={stat} />
+				))}
+			</div>
+
+			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6'>
+				<div className='lg:col-span-2'>
+					<div className='bg-white rounded-xl shadow-sm border border-gray-200'>
+						<div className='px-6 py-4 border-b border-gray-200'>
+							<h3 className='text-lg font-semibold text-gray-900'>
+								Recent Activities
+							</h3>
+						</div>
+						<div className='p-2'>
+							{recentActivities.map((activity, index) => (
+								<ActivityItem key={index} activity={activity} />
 							))}
 						</div>
-
-						<div className='grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6'>
-							<div className='lg:col-span-2'>
-								<div className='bg-white rounded-xl shadow-sm border border-gray-200'>
-									<div className='px-6 py-4 border-b border-gray-200'>
-										<h3 className='text-lg font-semibold text-gray-900'>
-											Recent Activities
-										</h3>
-									</div>
-									<div className='p-2'>
-										{recentActivities.map((activity, index) => (
-											<ActivityItem key={index} activity={activity} />
-										))}
-									</div>
-								</div>
-							</div>
-
-							<div>
-								<div className='bg-white rounded-xl shadow-sm border border-gray-200'>
-									<div className='px-6 py-4 border-b border-gray-200'>
-										<div className='flex items-center justify-between'>
-											<h3 className='text-lg font-semibold text-gray-900'>
-												Upcoming Events
-											</h3>
-										</div>
-									</div>
-									<div className='p-4 space-y-4'>
-										{upcomingEvents.map((event, index) => (
-											<EventCard key={index} event={event} />
-										))}
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div className='mt-6'>
-							<QuickActions actions={quickActions} />
-						</div>
-					</>
-				) : (
-					<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center'>
-						<h3 className='text-lg font-semibold text-gray-900'>
-							{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Section
-						</h3>
-						<p className='text-gray-600'>
-							This section would contain the {activeTab} management interface.
-						</p>
 					</div>
-				)
-			}
-		</AdminLayout>
+				</div>
+
+				<div>
+					<div className='bg-white rounded-xl shadow-sm border border-gray-200'>
+						<div className='px-6 py-4 border-b border-gray-200'>
+							<div className='flex items-center justify-between'>
+								<h3 className='text-lg font-semibold text-gray-900'>
+									Upcoming Events
+								</h3>
+							</div>
+						</div>
+						<div className='p-4 space-y-4'>
+							{upcomingEvents.map((event, index) => (
+								<EventCard key={index} event={event} />
+							))}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div className='mt-6'>
+				<QuickActions actions={quickActions} />
+			</div>
+		</>
 	);
 };
 
