@@ -11,6 +11,10 @@ import {
 	Heart,
 	Book,
 	BarChart3,
+	PhoneIcon,
+	Phone,
+	Smartphone,
+	SmartphoneIcon,
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -23,18 +27,18 @@ const Dashboard = () => {
 			color: 'bg-blue-500',
 		},
 		{
-			title: 'Events This Month',
-			value: '18',
-			change: '+3',
-			icon: Calendar,
-			color: 'bg-purple-500',
+			title: 'Total mobile app users',
+			value: '200',
+			change: '+20',
+			icon: SmartphoneIcon,
+			color: 'bg-blue-500',
 		},
 		{
 			title: 'Attendance Rate',
 			value: '78%',
 			change: '+5%',
 			icon: TrendingUp,
-			color: 'bg-orange-500',
+			color: 'bg-green-500',
 		},
 	];
 
