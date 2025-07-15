@@ -5,20 +5,37 @@ header("Access-Control-Allow-Methods: GET");
 header("Access-Control-Max-Age: 3600");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
 
-require_once '../config/database.php';
-require_once '../models/Member.php';
-require_once '../models/Stats.php';
+// Add error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-$database = new Database();
-$db = $database->getConnection();
-
-$member = new Member($db);
-$stats = new Stats($db);
+try {
+    require_once '../config/database.php';
+    require_once '../models/Member.php';
+    require_once '../models/stats.php'; // Fixed case sensitivity
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Failed to load required files: ' . $e->getMessage()
+    ]);
+    exit;
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method == 'GET') {
     try {
+        $database = new Database();
+        $db = $database->getConnection();
+
+        if (!$db) {
+            throw new Exception('Database connection failed');
+        }
+
+        $member = new Member($db);
+        $stats = new Stats($db);
+
         // Get dashboard statistics
         $dashboard_stats = $stats->getDashboardStats();
 
@@ -52,13 +69,13 @@ if ($method == 'GET') {
             'success' => true,
             'data' => [
                 'stats' => [
-                    'total_members' => $dashboard_stats['total_members'],
-                    'mobile_users' => $dashboard_stats['mobile_users'],
-                    'attendance_rate' => $dashboard_stats['attendance_rate'],
-                    'member_growth' => $dashboard_stats['member_growth'],
-                    'mobile_growth' => $dashboard_stats['mobile_growth']
+                    'total_members' => $dashboard_stats['total_members'] ?? 0,
+                    'mobile_users' => $dashboard_stats['mobile_users'] ?? 0,
+                    'attendance_rate' => $dashboard_stats['attendance_rate'] ?? 0,
+                    'member_growth' => $dashboard_stats['member_growth'] ?? 0,
+                    'mobile_growth' => $dashboard_stats['mobile_growth'] ?? 0
                 ],
-                'recent_activities' => $recent_activities,
+                'recent_activities' => $recent_activities ?? [],
                 'upcoming_events' => $upcoming_events
             ]
         ];
@@ -69,7 +86,12 @@ if ($method == 'GET') {
         http_response_code(500);
         echo json_encode([
             'success' => false,
-            'message' => 'Internal server error: ' . $e->getMessage()
+            'message' => 'Internal server error: ' . $e->getMessage(),
+            'debug' => [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]
         ]);
     }
 } else {
