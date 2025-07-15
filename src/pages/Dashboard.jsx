@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import StatCard from '../components/StatCard';
 import ActivityItem from '../components/ActivityItem';
 import EventCard from '../components/EventCard';
@@ -11,86 +11,100 @@ import {
 	Heart,
 	Book,
 	BarChart3,
-	PhoneIcon,
-	Phone,
-	Smartphone,
 	SmartphoneIcon,
+	AlertCircle,
 } from 'lucide-react';
 
 const Dashboard = () => {
+	const [dashboardData, setDashboardData] = useState(null);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(null);
+
+	useEffect(() => {
+		fetchDashboardData();
+	}, []);
+
+	const fetchDashboardData = async () => {
+		try {
+			setLoading(true);
+
+			const response = await fetch('http://localhost:8000/dashboard.php');
+
+			const text = await response.text();
+			console.log('Raw response:', text);
+
+			const data = JSON.parse(text);
+			console.log('Parsed dashboard data:', data);
+
+			if (data.success) {
+				setDashboardData(data.data);
+				setError(null);
+			} else {
+				setError(data.message || 'Dashboard data fetch failed');
+			}
+		} catch (err) {
+			console.error('Fetch error:', err);
+			setError('Error connecting to server or invalid response');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const getIconComponent = (iconName) => {
+		const icons = {
+			UserCheck,
+			Calendar,
+			Heart,
+			Book,
+		};
+		return icons[iconName] || UserCheck;
+	};
+
+	if (loading) {
+		return (
+			<div className='flex items-center justify-center h-64'>
+				<div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600'></div>
+			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<div className='bg-red-50 border border-red-200 rounded-lg p-4'>
+				<div className='flex items-center space-x-2'>
+					<AlertCircle className='w-5 h-5 text-red-500' />
+					<span className='text-red-700'>{error}</span>
+				</div>
+				<button
+					onClick={fetchDashboardData}
+					className='mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700'>
+					Retry
+				</button>
+			</div>
+		);
+	}
+
 	const stats = [
 		{
 			title: 'Total Members',
-			value: '1,247',
-			change: '+12%',
+			value: dashboardData?.stats?.total_members || 0,
+			change: `+${dashboardData?.stats?.member_growth || 0}%`,
 			icon: Users,
 			color: 'bg-blue-500',
 		},
 		{
-			title: 'Total mobile app users',
-			value: '200',
-			change: '+20',
+			title: 'Mobile App Users',
+			value: dashboardData?.stats?.mobile_users || 0,
+			change: `+${dashboardData?.stats?.mobile_growth || 0}%`,
 			icon: SmartphoneIcon,
-			color: 'bg-blue-500',
+			color: 'bg-green-500',
 		},
 		{
 			title: 'Attendance Rate',
-			value: '78%',
+			value: `${dashboardData?.stats?.attendance_rate || 0}%`,
 			change: '+5%',
 			icon: TrendingUp,
-			color: 'bg-green-500',
-		},
-	];
-
-	const recentActivities = [
-		{
-			type: 'member',
-			title: 'New Member Registration',
-			description: 'Sarah Johnson joined the congregation',
-			time: '2 hours ago',
-			icon: UserCheck,
-		},
-		{
-			type: 'event',
-			title: 'Youth Group Meeting',
-			description: 'Wednesday evening service scheduled',
-			time: '4 hours ago',
-			icon: Calendar,
-		},
-		{
-			type: 'donation',
-			title: 'Donation Received',
-			description: '$500 received from anonymous donor',
-			time: '1 day ago',
-			icon: Heart,
-		},
-		{
-			type: 'prayer',
-			title: 'Prayer Request',
-			description: 'New prayer request submitted',
-			time: '2 days ago',
-			icon: Book,
-		},
-	];
-
-	const upcomingEvents = [
-		{
-			title: 'Sunday Service',
-			date: 'July 14, 2025',
-			time: '10:00 AM',
-			attendees: 120,
-		},
-		{
-			title: 'Bible Study',
-			date: 'July 16, 2025',
-			time: '7:00 PM',
-			attendees: 45,
-		},
-		{
-			title: 'Youth Fellowship',
-			date: 'July 18, 2025',
-			time: '6:30 PM',
-			attendees: 32,
+			color: 'bg-orange-500',
 		},
 	];
 
@@ -101,7 +115,7 @@ const Dashboard = () => {
 
 	return (
 		<>
-			<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
+			<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
 				{stats.map((stat, i) => (
 					<StatCard key={i} stat={stat} />
 				))}
@@ -116,9 +130,21 @@ const Dashboard = () => {
 							</h3>
 						</div>
 						<div className='p-2'>
-							{recentActivities.map((activity, index) => (
-								<ActivityItem key={index} activity={activity} />
-							))}
+							{dashboardData?.recent_activities?.length > 0 ? (
+								dashboardData.recent_activities.map((activity, index) => (
+									<ActivityItem
+										key={index}
+										activity={{
+											...activity,
+											icon: getIconComponent(activity.icon),
+										}}
+									/>
+								))
+							) : (
+								<div className='p-4 text-center text-gray-500'>
+									No recent activities
+								</div>
+							)}
 						</div>
 					</div>
 				</div>
@@ -133,9 +159,15 @@ const Dashboard = () => {
 							</div>
 						</div>
 						<div className='p-4 space-y-4'>
-							{upcomingEvents.map((event, index) => (
-								<EventCard key={index} event={event} />
-							))}
+							{dashboardData?.upcoming_events?.length > 0 ? (
+								dashboardData.upcoming_events.map((event, index) => (
+									<EventCard key={index} event={event} />
+								))
+							) : (
+								<div className='text-center text-gray-500'>
+									No upcoming events
+								</div>
+							)}
 						</div>
 					</div>
 				</div>
