@@ -1,12 +1,18 @@
 <?php
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Max-Age: 3600");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
 
-require_once '../config/database.php';
-require_once '../models/Member.php';
+// Handle preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
+require_once './config/database.php';
+require_once './models/Member.php';
 
 $database = new Database();
 $db = $database->getConnection();
@@ -112,10 +118,19 @@ function handlePostRequest($member)
             }
         }
 
+        // Convert gender to initial
+        $gender_mapping = [
+            'Male' => 'M',
+            'Female' => 'F',
+            'Other' => 'O',
+            'Prefer not to say' => 'P'
+        ];
+        $gender_initial = isset($gender_mapping[$data['gender']]) ? $gender_mapping[$data['gender']] : 'O';
+
         // Set member properties
         $member->first_name = $data['first_name'];
         $member->last_name = $data['last_name'];
-        $member->gender = $data['gender'];
+        $member->gender = $gender_initial;
         $member->dob = $data['dob'];
         $member->address = $data['address'] ?? '';
         $member->phone_number = $data['phone_number'] ?? '';
@@ -159,11 +174,20 @@ function handlePutRequest($member)
             return;
         }
 
+        // Convert gender to initial
+        $gender_mapping = [
+            'Male' => 'M',
+            'Female' => 'F',
+            'Other' => 'O',
+            'Prefer not to say' => 'P'
+        ];
+        $gender_initial = isset($gender_mapping[$data['gender']]) ? $gender_mapping[$data['gender']] : $data['gender'];
+
         // Set member properties
         $member->mid = $data['id'];
         $member->first_name = $data['first_name'] ?? '';
         $member->last_name = $data['last_name'] ?? '';
-        $member->gender = $data['gender'] ?? '';
+        $member->gender = $gender_initial;
         $member->dob = $data['dob'] ?? '';
         $member->address = $data['address'] ?? '';
         $member->phone_number = $data['phone_number'] ?? '';
@@ -232,12 +256,21 @@ function handleDeleteRequest($member)
 
 function formatMemberData($row)
 {
+    // Convert gender initial back to full name
+    $gender_mapping = [
+        'M' => 'Male',
+        'F' => 'Female',
+        'O' => 'Other',
+        'P' => 'Prefer not to say'
+    ];
+    $gender_full = isset($gender_mapping[$row['gender']]) ? $gender_mapping[$row['gender']] : $row['gender'];
+
     return [
         'id' => $row['mid'],
         'name' => $row['first_name'] . ' ' . $row['last_name'],
         'first_name' => $row['first_name'],
         'last_name' => $row['last_name'],
-        'gender' => $row['gender'],
+        'gender' => $gender_full,
         'dob' => $row['dob'],
         'address' => $row['address'],
         'phone_number' => $row['phone_number'],

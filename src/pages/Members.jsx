@@ -33,7 +33,7 @@ const Members = () => {
 	const fetchMembers = async (source = null, search = null) => {
 		try {
 			setLoading(true);
-			let url = 'http://localhost:8000/members.php';
+			let url = 'http://localhost:8000/api/members.php';
 			const params = new URLSearchParams();
 
 			if (source) params.append('source', source);
@@ -93,7 +93,7 @@ const Members = () => {
 	const handleViewMember = async (memberId) => {
 		try {
 			const response = await fetch(
-				`http://localhost:8000/members.php?id=${memberId}`
+				`http://localhost:8000/api/members.php?id=${memberId}`
 			);
 			const data = await response.json();
 
@@ -115,7 +115,7 @@ const Members = () => {
 		}
 
 		try {
-			const response = await fetch('http://localhost:8000/members.php', {
+			const response = await fetch('http://localhost:8000/api/members.php', {
 				method: 'DELETE',
 				headers: {
 					'Content-Type': 'application/json',
@@ -126,7 +126,13 @@ const Members = () => {
 			const data = await response.json();
 
 			if (data.success) {
+				// Remove the member from the state
 				setMembers(members.filter((m) => m.id !== memberId));
+				setError(null);
+				// Show success message temporarily
+				const successMessage = 'Member deleted successfully';
+				setError(null);
+				// You could add a success state if needed
 			} else {
 				setError(data.message || 'Failed to delete member');
 			}
@@ -138,19 +144,28 @@ const Members = () => {
 
 	const handleAddMember = async (memberData) => {
 		try {
-			const response = await fetch('http://localhost:8000/members.php', {
+			// Add source field to member data (defaulting to Web for manually added members)
+			const memberWithSource = {
+				...memberData,
+				source: 'Web', // You can change this or add it to the form
+			};
+
+			const response = await fetch('http://localhost:8000/api/members.php', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify(memberData),
+				body: JSON.stringify(memberWithSource),
 			});
 
 			const data = await response.json();
 
 			if (data.success) {
-				fetchMembers(); // Refresh the list
+				// Refresh the members list
+				await fetchMembers();
 				setShowAddModal(false);
+				setError(null);
+				// You could add a success message here
 			} else {
 				setError(data.message || 'Failed to add member');
 			}
@@ -394,15 +409,26 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 		profile_completed: 0,
 	});
 
-	const handleSubmit = (e) => {
+	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	const handleSubmit = async (e) => {
 		e.preventDefault();
-		onSubmit(formData);
+		setIsSubmitting(true);
+
+		try {
+			await onSubmit(formData);
+		} catch (error) {
+			console.error('Error submitting form:', error);
+		} finally {
+			setIsSubmitting(false);
+		}
 	};
 
 	const handleChange = (e) => {
+		const { name, value, type, checked } = e.target;
 		setFormData({
 			...formData,
-			[e.target.name]: e.target.value,
+			[name]: type === 'checkbox' ? (checked ? 1 : 0) : value,
 		});
 	};
 
@@ -413,7 +439,8 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 					<h3 className='text-lg font-semibold'>Add New Member</h3>
 					<button
 						onClick={onClose}
-						className='text-gray-500 hover:text-gray-700'>
+						className='text-gray-500 hover:text-gray-700'
+						disabled={isSubmitting}>
 						<X className='w-5 h-5' />
 					</button>
 				</div>
@@ -430,7 +457,8 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 								value={formData.first_name}
 								onChange={handleChange}
 								required
-								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+								disabled={isSubmitting}
+								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 							/>
 						</div>
 						<div>
@@ -443,7 +471,8 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 								value={formData.last_name}
 								onChange={handleChange}
 								required
-								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+								disabled={isSubmitting}
+								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 							/>
 						</div>
 					</div>
@@ -457,10 +486,12 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 							value={formData.gender}
 							onChange={handleChange}
 							required
-							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'>
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'>
 							<option value=''>Select Gender</option>
 							<option value='Male'>Male</option>
 							<option value='Female'>Female</option>
+							<option value='Other'>Other</option>
 						</select>
 					</div>
 
@@ -474,7 +505,8 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 							value={formData.dob}
 							onChange={handleChange}
 							required
-							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 						/>
 					</div>
 
@@ -487,7 +519,8 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 							name='phone_number'
 							value={formData.phone_number}
 							onChange={handleChange}
-							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 						/>
 					</div>
 
@@ -500,21 +533,45 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 							value={formData.address}
 							onChange={handleChange}
 							rows='3'
-							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 						/>
+					</div>
+
+					<div className='flex items-center'>
+						<input
+							type='checkbox'
+							name='profile_completed'
+							checked={formData.profile_completed === 1}
+							onChange={handleChange}
+							disabled={isSubmitting}
+							className='mr-2'
+						/>
+						<label className='text-sm font-medium text-gray-700'>
+							Profile Completed
+						</label>
 					</div>
 
 					<div className='flex justify-end space-x-3 pt-4'>
 						<button
 							type='button'
 							onClick={onClose}
-							className='px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50'>
+							disabled={isSubmitting}
+							className='px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50'>
 							Cancel
 						</button>
 						<button
 							type='submit'
-							className='px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700'>
-							Add Member
+							disabled={isSubmitting}
+							className='px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center'>
+							{isSubmitting ? (
+								<>
+									<div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2'></div>
+									Adding...
+								</>
+							) : (
+								'Add Member'
+							)}
 						</button>
 					</div>
 				</form>

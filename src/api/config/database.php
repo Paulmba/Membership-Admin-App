@@ -1,4 +1,5 @@
 <?php
+// config/database.php
 class Database
 {
     private $host = 'localhost';
@@ -20,7 +21,7 @@ class Database
             $this->conn->exec("set names utf8");
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         } catch (PDOException $exception) {
-            echo "Connection error: " . $exception->getMessage();
+            throw new Exception("Database connection failed: " . $exception->getMessage());
         }
 
         return $this->conn;
