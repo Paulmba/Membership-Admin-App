@@ -19,8 +19,10 @@ const Members = () => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [showAddModal, setShowAddModal] = useState(false);
-	const [selectedMember, setSelectedMember] = useState(null);
-	const [showViewModal, setShowViewModal] = useState(false);
+	const [showDetailPage, setShowDetailPage] = useState(false);
+	const [detailMember, setDetailMember] = useState(null);
+	const [showEditModal, setShowEditModal] = useState(false);
+	const [editingMember, setEditingMember] = useState(null);
 
 	useEffect(() => {
 		fetchMembers();
@@ -98,8 +100,8 @@ const Members = () => {
 			const data = await response.json();
 
 			if (data.success) {
-				setSelectedMember(data.data);
-				setShowViewModal(true);
+				setDetailMember(data.data);
+				setShowDetailPage(true);
 			} else {
 				setError(data.message || 'Failed to fetch member details');
 			}
@@ -174,6 +176,38 @@ const Members = () => {
 			console.error('Add member error:', err);
 		}
 	};
+	const handleEditMember = async (memberData) => {
+		try {
+			const response = await fetch('http://localhost:8000/api/members.php', {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ ...memberData, id: editingMember.id }),
+			});
+
+			const data = await response.json();
+
+			if (data.success) {
+				// Update the detailMember state with new data
+				setDetailMember({ ...detailMember, ...memberData });
+				// Update the members list
+				setMembers(
+					members.map((m) =>
+						m.id === editingMember.id ? { ...m, ...memberData } : m
+					)
+				);
+				setShowEditModal(false);
+				setEditingMember(null);
+				setError(null);
+			} else {
+				setError(data.message || 'Failed to update member');
+			}
+		} catch (err) {
+			setError('Error updating member');
+			console.error('Update member error:', err);
+		}
+	};
 
 	const getBadgeColor = (source) => {
 		return source === 'Mobile'
@@ -197,6 +231,37 @@ const Members = () => {
 		);
 	}
 
+	// Add this new condition BEFORE the existing return
+	if (showDetailPage && detailMember) {
+		return (
+			<>
+				<MemberDetailPage
+					member={detailMember}
+					onBack={() => {
+						setShowDetailPage(false);
+						setDetailMember(null);
+					}}
+					onEdit={(member) => {
+						setEditingMember(member);
+						setShowEditModal(true);
+					}}
+				/>
+				{/* Add the Edit Modal here so it shows even when on detail page */}
+				{showEditModal && editingMember && (
+					<EditMemberModal
+						member={editingMember}
+						onClose={() => {
+							setShowEditModal(false);
+							setEditingMember(null);
+						}}
+						onSubmit={handleEditMember}
+					/>
+				)}
+			</>
+		);
+	}
+
+	// Keep your existing return statement exactly as it is
 	return (
 		<div className='space-y-6'>
 			{error && (
@@ -382,15 +447,15 @@ const Members = () => {
 					onSubmit={handleAddMember}
 				/>
 			)}
-
-			{/* View Member Modal */}
-			{showViewModal && selectedMember && (
-				<ViewMemberModal
-					member={selectedMember}
+			{/* Edit Member Modal - ADD THIS */}
+			{showEditModal && editingMember && (
+				<EditMemberModal
+					member={editingMember}
 					onClose={() => {
-						setShowViewModal(false);
-						setSelectedMember(null);
+						setShowEditModal(false);
+						setEditingMember(null);
 					}}
+					onSubmit={handleEditMember}
 				/>
 			)}
 		</div>
@@ -579,9 +644,192 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 		</div>
 	);
 };
+// Edit Member Modal Component
+const EditMemberModal = ({ member, onClose, onSubmit }) => {
+	const [formData, setFormData] = useState({
+		first_name: member.first_name || member.name?.split(' ')[0] || '',
+		last_name: member.last_name || member.name?.split(' ')[1] || '',
+		gender: member.gender || '',
+		dob: member.dob || '',
+		address: member.address || '',
+		phone_number: member.phone_number || '',
+		profile_completed: member.profile_completed || 0,
+	});
+
+	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		setIsSubmitting(true);
+
+		try {
+			await onSubmit(formData);
+		} catch (error) {
+			console.error('Error submitting form:', error);
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	const handleChange = (e) => {
+		const { name, value, type, checked } = e.target;
+		setFormData({
+			...formData,
+			[name]: type === 'checkbox' ? (checked ? 1 : 0) : value,
+		});
+	};
+
+	return (
+		<div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
+			<div className='bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto'>
+				<div className='flex justify-between items-center mb-4'>
+					<h3 className='text-lg font-semibold'>Edit Member</h3>
+					<button
+						onClick={onClose}
+						className='text-gray-500 hover:text-gray-700'
+						disabled={isSubmitting}>
+						<X className='w-5 h-5' />
+					</button>
+				</div>
+
+				<form onSubmit={handleSubmit} className='space-y-4'>
+					<div className='grid grid-cols-2 gap-4'>
+						<div>
+							<label className='block text-sm font-medium text-gray-700 mb-1'>
+								First Name *
+							</label>
+							<input
+								type='text'
+								name='first_name'
+								value={formData.first_name}
+								onChange={handleChange}
+								required
+								disabled={isSubmitting}
+								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+							/>
+						</div>
+						<div>
+							<label className='block text-sm font-medium text-gray-700 mb-1'>
+								Last Name *
+							</label>
+							<input
+								type='text'
+								name='last_name'
+								value={formData.last_name}
+								onChange={handleChange}
+								required
+								disabled={isSubmitting}
+								className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+							/>
+						</div>
+					</div>
+
+					<div>
+						<label className='block text-sm font-medium text-gray-700 mb-1'>
+							Gender *
+						</label>
+						<select
+							name='gender'
+							value={formData.gender}
+							onChange={handleChange}
+							required
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'>
+							<option value=''>Select Gender</option>
+							<option value='Male'>Male</option>
+							<option value='Female'>Female</option>
+							<option value='Other'>Other</option>
+						</select>
+					</div>
+
+					<div>
+						<label className='block text-sm font-medium text-gray-700 mb-1'>
+							Date of Birth *
+						</label>
+						<input
+							type='date'
+							name='dob'
+							value={formData.dob}
+							onChange={handleChange}
+							required
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+						/>
+					</div>
+
+					<div>
+						<label className='block text-sm font-medium text-gray-700 mb-1'>
+							Phone Number
+						</label>
+						<input
+							type='tel'
+							name='phone_number'
+							value={formData.phone_number}
+							onChange={handleChange}
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+						/>
+					</div>
+
+					<div>
+						<label className='block text-sm font-medium text-gray-700 mb-1'>
+							Address
+						</label>
+						<textarea
+							name='address'
+							value={formData.address}
+							onChange={handleChange}
+							rows='3'
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+						/>
+					</div>
+
+					<div className='flex items-center'>
+						<input
+							type='checkbox'
+							name='profile_completed'
+							checked={formData.profile_completed === 1}
+							onChange={handleChange}
+							disabled={isSubmitting}
+							className='mr-2'
+						/>
+						<label className='text-sm font-medium text-gray-700'>
+							Profile Completed
+						</label>
+					</div>
+
+					<div className='flex justify-end space-x-3 pt-4'>
+						<button
+							type='button'
+							onClick={onClose}
+							disabled={isSubmitting}
+							className='px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50'>
+							Cancel
+						</button>
+						<button
+							type='submit'
+							disabled={isSubmitting}
+							className='px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center'>
+							{isSubmitting ? (
+								<>
+									<div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2'></div>
+									Updating...
+								</>
+							) : (
+								'Update Member'
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+};
 
 // View Member Modal Component
-const ViewMemberModal = ({ member, onClose }) => {
+// Member Detail Page Component
+const MemberDetailPage = ({ member, onBack, onEdit }) => {
 	const formatDate = (dateString) => {
 		return new Date(dateString).toLocaleDateString('en-US', {
 			year: 'numeric',
@@ -590,48 +838,89 @@ const ViewMemberModal = ({ member, onClose }) => {
 		});
 	};
 
-	return (
-		<div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
-			<div className='bg-white rounded-lg max-w-lg w-full p-6'>
-				<div className='flex justify-between items-center mb-4'>
-					<h3 className='text-lg font-semibold'>Member Details</h3>
-					<button
-						onClick={onClose}
-						className='text-gray-500 hover:text-gray-700'>
-						<X className='w-5 h-5' />
-					</button>
-				</div>
+	const formatAddress = (address) => {
+		return address ? address.replace(/\s+/g, '+') : '';
+	};
 
-				<div className='space-y-4'>
-					<div className='flex items-center space-x-4'>
-						<div className='flex-shrink-0 h-16 w-16'>
-							<div className='h-16 w-16 rounded-full bg-blue-500 flex items-center justify-center'>
-								<span className='text-white font-medium text-xl'>
-									{member.name
-										.split(' ')
-										.map((n) => n[0])
-										.join('')
-										.toUpperCase()}
-								</span>
-							</div>
+	return (
+		<div className='max-w-4xl mx-auto space-y-6'>
+			{/* Header */}
+			<div className='flex items-center justify-between'>
+				<button
+					onClick={onBack}
+					className='flex items-center px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors'>
+					<svg
+						className='w-5 h-5 mr-2'
+						fill='none'
+						stroke='currentColor'
+						viewBox='0 0 24 24'>
+						<path
+							strokeLinecap='round'
+							strokeLinejoin='round'
+							strokeWidth={2}
+							d='M15 19l-7-7 7-7'
+						/>
+					</svg>
+					Back to Members
+				</button>
+				<div className='flex items-center space-x-4'>
+					<button
+						onClick={() => onEdit(member)}
+						className='flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'>
+						<Edit className='w-4 h-4 mr-2' />
+						Edit Member
+					</button>
+					<h1 className='text-2xl font-bold text-gray-900'>Member Details</h1>
+				</div>
+			</div>
+			{/* Member Information Card */}
+			<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
+				<div className='flex items-start space-x-6'>
+					<div className='flex-shrink-0 h-20 w-20'>
+						<div className='h-20 w-20 rounded-full bg-blue-500 flex items-center justify-center'>
+							<span className='text-white font-medium text-2xl'>
+								{member.name
+									.split(' ')
+									.map((n) => n[0])
+									.join('')
+									.toUpperCase()}
+							</span>
 						</div>
-						<div>
-							<h4 className='text-xl font-semibold text-gray-900'>
-								{member.name}
-							</h4>
-							<p className='text-gray-600'>{member.gender}</p>
+					</div>
+					<div className='flex-1'>
+						<h2 className='text-xl font-semibold text-gray-900'>
+							{member.name}
+						</h2>
+						<p className='text-gray-600'>{member.gender}</p>
+						<div className='mt-2 flex items-center space-x-4'>
 							<span
-								className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+								className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
 									member.source === 'Mobile'
 										? 'bg-green-100 text-green-800'
 										: 'bg-blue-100 text-blue-800'
 								}`}>
 								{member.source}
 							</span>
+							<span
+								className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
+									member.is_verified
+										? 'bg-green-100 text-green-800'
+										: 'bg-yellow-100 text-yellow-800'
+								}`}>
+								{member.is_verified ? 'Verified' : 'Pending'}
+							</span>
 						</div>
 					</div>
-
-					<div className='grid grid-cols-2 gap-4'>
+				</div>
+			</div>
+			{/* Details Grid */}
+			<div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+				{/* Personal Information */}
+				<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
+					<h3 className='text-lg font-semibold text-gray-900 mb-4'>
+						Personal Information
+					</h3>
+					<div className='space-y-4'>
 						<div>
 							<label className='block text-sm font-medium text-gray-700'>
 								Date of Birth
@@ -646,67 +935,69 @@ const ViewMemberModal = ({ member, onClose }) => {
 								{formatDate(member.joined)}
 							</p>
 						</div>
-					</div>
-
-					<div>
-						<label className='block text-sm font-medium text-gray-700'>
-							Phone Number
-						</label>
-						<p className='text-sm text-gray-900'>
-							{member.phone_number || 'N/A'}
-						</p>
-					</div>
-
-					{member.mobile_phone && (
 						<div>
 							<label className='block text-sm font-medium text-gray-700'>
-								Mobile Phone
+								Profile Status
 							</label>
-							<p className='text-sm text-gray-900'>{member.mobile_phone}</p>
+							<p className='text-sm text-gray-900'>
+								{member.profile_completed ? 'Completed' : 'Incomplete'}
+							</p>
 						</div>
-					)}
-
-					<div>
-						<label className='block text-sm font-medium text-gray-700'>
-							Address
-						</label>
-						<p className='text-sm text-gray-900'>{member.address || 'N/A'}</p>
 					</div>
-
-					<div>
-						<label className='block text-sm font-medium text-gray-700'>
-							Profile Status
-						</label>
-						<p className='text-sm text-gray-900'>
-							{member.profile_completed ? 'Completed' : 'Incomplete'}
-						</p>
-					</div>
-
-					{member.is_verified !== null && (
-						<div>
-							<label className='block text-sm font-medium text-gray-700'>
-								Verification Status
-							</label>
-							<span
-								className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-									member.is_verified
-										? 'bg-green-100 text-green-800'
-										: 'bg-yellow-100 text-yellow-800'
-								}`}>
-								{member.is_verified ? 'Verified' : 'Pending'}
-							</span>
-						</div>
-					)}
 				</div>
 
-				<div className='flex justify-end pt-6'>
-					<button
-						onClick={onClose}
-						className='px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700'>
-						Close
-					</button>
+				{/* Contact Information */}
+				<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
+					<h3 className='text-lg font-semibold text-gray-900 mb-4'>
+						Contact Information
+					</h3>
+					<div className='space-y-4'>
+						<div>
+							<label className='block text-sm font-medium text-gray-700'>
+								Phone Number
+							</label>
+							<p className='text-sm text-gray-900'>
+								{member.phone_number || 'N/A'}
+							</p>
+						</div>
+						{member.mobile_phone && (
+							<div>
+								<label className='block text-sm font-medium text-gray-700'>
+									Mobile Phone
+								</label>
+								<p className='text-sm text-gray-900'>{member.mobile_phone}</p>
+							</div>
+						)}
+						<div>
+							<label className='block text-sm font-medium text-gray-700'>
+								Address
+							</label>
+							<p className='text-sm text-gray-900'>{member.address || 'N/A'}</p>
+						</div>
+					</div>
 				</div>
 			</div>
+			{/* Google Maps */}
+			{member.address && (
+				<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
+					<h3 className='text-lg font-semibold text-gray-900 mb-4'>Location</h3>
+					<div className='w-full h-96 rounded-lg overflow-hidden'>
+						<iframe
+							src={`https://www.google.com/maps?q=${formatAddress(
+								member.address
+							)}&output=embed`}
+							width='100%'
+							height='100%'
+							style={{ border: 0 }}
+							allowFullScreen=''
+							loading='lazy'
+							referrerPolicy='no-referrer-when-downgrade'></iframe>
+					</div>
+					<p className='text-sm text-gray-600 mt-2'>
+						Address: {member.address}
+					</p>
+				</div>
+			)}
 		</div>
 	);
 };

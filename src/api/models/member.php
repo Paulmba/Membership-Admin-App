@@ -21,14 +21,25 @@ class Member
         $this->conn = $db;
     }
 
+    // Getters for table names
+    public function getTableName()
+    {
+        return $this->table_name;
+    }
+
+    public function getMobileTableName()
+    {
+        return $this->mobile_table;
+    }
+
     // Get all members with mobile user information
     public function getAll()
     {
-        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified, 
-                  CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
-                  FROM " . $this->table_name . " m
-                  LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
-                  ORDER BY m.created_at DESC";
+        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     ORDER BY m.created_at DESC";
 
         $stmt = $this->conn->prepare($query);
         $stmt->execute();
@@ -76,15 +87,15 @@ class Member
         return $stmt;
     }
 
-    // Search members
+    // Search members by name
     public function search($searchTerm)
     {
-        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified, 
-                  CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
-                  FROM " . $this->table_name . " m
-                  LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
-                  WHERE m.first_name LIKE :search OR m.last_name LIKE :search
-                  ORDER BY m.created_at DESC";
+        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     WHERE m.first_name LIKE :search OR m.last_name LIKE :search
+                     ORDER BY m.created_at DESC";
 
         $stmt = $this->conn->prepare($query);
         $searchTerm = "%{$searchTerm}%";
@@ -93,14 +104,31 @@ class Member
         return $stmt;
     }
 
+    // NEW METHOD: Get members by address similarity
+    public function getByAddressSimilarity($addressTerm)
+    {
+        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     WHERE m.address LIKE :addressTerm
+                     ORDER BY m.created_at DESC";
+
+        $stmt = $this->conn->prepare($query);
+        $searchAddress = "%{$addressTerm}%"; // Use % for partial matching
+        $stmt->bindParam(':addressTerm', $searchAddress);
+        $stmt->execute();
+        return $stmt;
+    }
+
     // Get member by ID
     public function getById($id)
     {
-        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified, 
-                  CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
-                  FROM " . $this->table_name . " m
-                  LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
-                  WHERE m.mid = :id";
+        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     WHERE m.mid = :id";
 
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':id', $id);
@@ -111,8 +139,8 @@ class Member
     // Create new member
     public function create()
     {
-        $query = "INSERT INTO " . $this->table_name . " 
-                  (first_name, last_name, gender, dob, address, phone_number, profile_completed) 
+        $query = "INSERT INTO " . $this->table_name . "
+                  (first_name, last_name, gender, dob, address, phone_number, profile_completed)
                   VALUES (:first_name, :last_name, :gender, :dob, :address, :phone_number, :profile_completed)";
 
         $stmt = $this->conn->prepare($query);
@@ -142,9 +170,9 @@ class Member
     // Update member
     public function update()
     {
-        $query = "UPDATE " . $this->table_name . " 
-                  SET first_name = :first_name, last_name = :last_name, 
-                      gender = :gender, dob = :dob, address = :address, 
+        $query = "UPDATE " . $this->table_name . "
+                  SET first_name = :first_name, last_name = :last_name,
+                      gender = :gender, dob = :dob, address = :address,
                       phone_number = :phone_number, profile_completed = :profile_completed
                   WHERE mid = :mid";
 
@@ -182,12 +210,12 @@ class Member
     // Get recent member registrations
     public function getRecentRegistrations($limit = 10)
     {
-        $query = "SELECT m.*, mu.phone_number as mobile_phone, 
-                  CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
-                  FROM " . $this->table_name . " m
-                  LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
-                  ORDER BY m.created_at DESC 
-                  LIMIT :limit";
+        $query = "SELECT m.*, mu.phone_number as mobile_phone,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     ORDER BY m.created_at DESC
+                     LIMIT :limit";
 
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);

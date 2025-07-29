@@ -27,3 +27,15 @@ class Database
         return $this->conn;
     }
 }
+
+// Create the $pdo variable that your main code expects
+try {
+    $database = new Database();
+    $pdo = $database->getConnection();
+} catch (Exception $e) {
+    error_log("Database connection error: " . $e->getMessage());
+    die(json_encode([
+        'success' => false,
+        'message' => 'Database connection failed: ' . $e->getMessage()
+    ]));
+}
