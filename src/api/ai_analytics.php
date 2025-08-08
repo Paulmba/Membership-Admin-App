@@ -79,12 +79,10 @@ try {
     $mobileUsers = 0;
     $verifiedMembers = 0;
     $ageSum = 0;
-    $genderDistribution = ['Male' => 0, 'Female' => 0, 'Other' => 0];
+    $genderDistribution = ['Male' => 0, 'Female' => 0];
     $sourceDistribution = ['Mobile' => 0, 'Web' => 0];
     $ageDistribution = []; // For the chart
     $growthData = []; // For the chart
-    $newMembersLastMonth = 0;
-    $prevMonthMembers = 0; // For growth rate calculation
 
     // Initialize growth data for past 12 months for chart
     for ($i = 11; $i >= 0; $i--) {
@@ -151,21 +149,10 @@ try {
     $lastMonth = date('Y-m', strtotime('-1 month'));
 
     $cumulativeMembers = 0;
-    $prevMonthCumulative = 0;
 
     foreach ($growthData as $month => $membersAdded) {
         $cumulativeMembers += $membersAdded;
         $formattedGrowthData[] = ['month' => $month, 'members' => $cumulativeMembers];
-
-        // This logic for newMembersLastMonth and prevMonthMembers needs refinement for accurate growth rate
-        // For dashboard metric, let's recalculate based on total members in current and previous month
-        if ($month === $currentMonth) {
-            // New members this month
-        }
-        if ($month === $lastMonth) {
-            // For growth rate on dashboard, we need total members at the end of last month
-            // this will be calculated after processing all historical data
-        }
     }
 
     // Recalculate growth rate based on total members at month end
@@ -209,7 +196,7 @@ try {
     // --- 3. Prepare Prompt for Gemini for AI Insights ---
     // Refined prompt for stricter JSON output
     $ai_insights_prompt = "Generate 3 concise and actionable AI-generated insights and recommendations based on the following membership analytics data. " .
-        "Each insight must have a 'title' (string), 'description' (string), and a 'recommendation' (string). " .
+        "Each insight must have a 'title' (string), 'description' (string), and a 'recommendation' (string). and should contain really brief explanations and in basic terminologies for anyone to understand " .
         "**ONLY return a JSON array of objects. Do NOT include any other text, greetings, or explanations outside the JSON.** " .
         "The JSON structure must be: " .
         "[\n  {\"title\": \"Insight Title\", \"description\": \"Insight description.\", \"recommendation\": \"Actionable recommendation.\"}\n]\n\n" .
@@ -230,7 +217,7 @@ try {
     if (isset($geminiResponse['candidates'][0]['content']['parts'][0]['text'])) {
         $geminiText = $geminiResponse['candidates'][0]['content']['parts'][0]['text'];
 
-        // Robust JSON extraction: Find the first '{' and last '}'
+        // Robust JSON extraction: Find the first '[' and last ']'
         $firstBrace = strpos($geminiText, '[');
         $lastBrace = strrpos($geminiText, ']');
 

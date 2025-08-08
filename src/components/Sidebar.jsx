@@ -1,11 +1,20 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Users, BarChart3, LogOut } from 'lucide-react';
+import {
+	Home,
+	Users,
+	BarChart3,
+	LogOut,
+	Megaphone, // For Announcements
+	UserCircle, // For Leadership
+} from 'lucide-react';
 
 const Sidebar = () => {
 	const navItems = [
 		{ to: '/dashboard', label: 'Dashboard', icon: Home },
 		{ to: '/members', label: 'Members', icon: Users },
+		{ to: '/announcements', label: 'Announcements', icon: Megaphone },
+		{ to: '/leadership', label: 'Leadership', icon: UserCircle },
 		{ to: '/reports', label: 'Reports', icon: BarChart3 },
 		{ to: '/logout', label: 'Logout', icon: LogOut },
 	];

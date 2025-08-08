@@ -73,7 +73,8 @@ $input = json_decode(file_get_contents("php://input"));
 
 $reportType = $input->report_type ?? 'membership_summary';
 $period = $input->period ?? 'last_30_days';
-$addressTerm = $input->address_term ?? null; // NEW: Capture address term
+$addressTerm = $input->address_term ?? null; // Capture address term for specific filtering
+$userQuery = $input->user_query ?? null; // NEW: Capture user's free-form custom query
 
 // --- Fetch Data from Database ---
 $dataForReport = [];
@@ -82,17 +83,22 @@ $prompt = "";
 
 try {
     $members_array = [];
+    $stmt = null;
+
+    // Determine data fetching strategy based on report type and available terms
     if ($reportType === 'custom_analysis' && !empty($addressTerm)) {
         // If custom analysis and an address term is provided, use the new method
         $stmt = $member->getByAddressSimilarity($addressTerm);
-        $reportTitle = "Custom AI Analysis Report for " . htmlspecialchars($addressTerm) . " area (" . ucwords(str_replace('_', ' ', $period)) . ")";
+        $reportTitle = "Custom AI Analysis Report for " . htmlspecialchars($addressTerm) . " Area";
     } else {
-        // Otherwise, fetch all members or as per existing logic
+        // Otherwise, fetch all members for general analysis or other report types
         $stmt = $member->getAll();
     }
 
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $members_array[] = $row;
+    if ($stmt) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $members_array[] = $row;
+        }
     }
 
     // Prepare data based on report type
@@ -158,13 +164,13 @@ try {
                                   FROM " . $member->getTableName() . "
                                   WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
                                   GROUP BY month ORDER BY month ASC";
-            $stmt = $db->prepare($growth_data_query);
-            $stmt->execute();
-            $growth_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt_growth = $db->prepare($growth_data_query);
+            $stmt_growth->execute();
+            $growth_data = $stmt_growth->fetchAll(PDO::FETCH_ASSOC);
 
             $prompt = "Conduct a membership growth analysis for the " . ucwords(str_replace('_', ' ', $period)) . " period. " .
                 "Analyze the provided monthly membership additions and discuss trends, peak periods, and potential reasons for growth or stagnation. " .
-                "Provide actionable insights and strategies for sustained growth. Format as a formal analysis report with an executive summary, findings, and recommendations.\n\n" .
+                "Provide actionable insights and strategies for sustained growth. Format as a analysis report with very easy to understand language and also keep it brief keeping in mind that this data is for a church so even for recommendations it should center on church related activities.\n\n" .
                 "Historical monthly new members data:\n" . json_encode($growth_data) . "\n\n";
             break;
 
@@ -239,16 +245,25 @@ try {
             break;
 
         case 'custom_analysis':
-            // The reportTitle is already set above if addressTerm is present
-            if (empty($addressTerm)) {
+            $promptContext = "";
+            if (!empty($userQuery)) {
+                $reportTitle = "Custom AI Query Analysis: " . htmlspecialchars(substr($userQuery, 0, 50)) . (strlen($userQuery) > 50 ? '...' : '');
+                $promptContext = "Based on your specific query: \"" . htmlspecialchars($userQuery) . "\", ";
+                // For custom queries, we rely on AI to analyze the general dataset based on the prompt.
+                // No specific database filtering by address_term for this type unless explicitly requested in prompt.
+            } else if (!empty($addressTerm)) {
+                $reportTitle = "Custom AI Analysis Report for " . htmlspecialchars($addressTerm) . " Area (" . ucwords(str_replace('_', ' ', $period)) . ")";
+                $promptContext = "This data specifically includes members associated with the address search term: '" . htmlspecialchars($addressTerm) . "'. ";
+            } else {
                 $reportTitle = "Custom AI Analysis Report for All Members (" . ucwords(str_replace('_', ' ', $period)) . ")";
+                $promptContext = "Analyze the overall membership data. ";
             }
 
             $prompt = "Perform a custom AI analysis on the provided membership data. " .
-                "This data specifically includes members associated with the address search term: '" . htmlspecialchars($addressTerm ?? 'N/A') . "'. " .
-                "Identify any interesting patterns, anomalies, or correlations within this specific group. " .
-                "Provide a high-level overview and unique insights relevant to their location/address similarity. " .
-                "Here is the raw member data for context:\n\n";
+                $promptContext .
+                "Identify any interesting patterns, anomalies, or correlations within this group. " .
+                "Provide a high-level overview and unique insights relevant to the data provided. " .
+                "Here is a sample of the raw member data for context:\n\n";
 
             // Limit the data sent to Gemini to avoid exceeding token limits, especially for large datasets.
             $sample_members = array_slice($members_array, 0, 50); // Take up to 50 for sample analysis
@@ -256,10 +271,10 @@ try {
                 $prompt .= "No members found for the specified criteria. Please analyze potential reasons or implications.";
             } else {
                 foreach ($sample_members as $s_mem) {
-                    $prompt .= "  - Member ID: " . $s_mem['mid'] . ", Gender: " . $s_mem['gender'] . ", DOB: " . $s_mem['dob'] . ", Address: " . $s_mem['address'] . ", Source: " . $s_mem['source'] . ", Verified: " . ($s_mem['is_verified'] ? 'Yes' : 'No') . "\n";
+                    $prompt .= "   - Member ID: " . $s_mem['mid'] . ", Gender: " . $s_mem['gender'] . ", DOB: " . $s_mem['dob'] . ", Address: " . $s_mem['address'] . ", Source: " . $s_mem['source'] . ", Verified: " . ($s_mem['is_verified'] ? 'Yes' : 'No') . "\n";
                 }
             }
-            $prompt .= "\nBased on this data, provide detailed insights and actionable recommendations tailored to this group.";
+            $prompt .= "\nBased on this data and the provided context, provide detailed insights and actionable recommendations tailored to this group.";
 
             break;
 
