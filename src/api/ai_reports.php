@@ -104,7 +104,7 @@ try {
             $webUsersCount = $totalMembers - $mobileUsersCount;
 
             $verifiedMembers = 0;
-            $genderDistribution = ['Male' => 0, 'Female' => 0, 'Other' => 0];
+            $genderDistribution = ['Male' => 0, 'Female' => 0];
             $sourceDistribution = ['Mobile' => 0, 'Web' => 0];
             $ageGroups = [];
 
