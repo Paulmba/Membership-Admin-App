@@ -20,20 +20,20 @@ const Sidebar = () => {
 	];
 
 	return (
-		<div className='w-64 bg-slate-900 text-white min-h-screen'>
+		<div className='w-64 bg-sidebar text-sidebar-text min-h-screen flex flex-col'>
 			<div className='p-6'>
 				<div className='flex items-center space-x-3'>
-					<div className='w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center'>
-						<Home className='w-5 h-5' />
+					<div className='w-10 h-10 bg-primary rounded-lg flex items-center justify-center'>
+						<Home className='w-6 h-6 text-white' />
 					</div>
-					<h1 className='text-xl font-bold'>ChurchAdmin</h1>
+					<h1 className='text-2xl font-bold text-white'>ChurchAdmin</h1>
 				</div>
 			</div>
 
-			<nav className='mt-6'>
+			<nav className='mt-8 flex-1'>
 				<div className='px-6 py-2'>
 					<p className='text-xs font-semibold text-gray-400 uppercase tracking-wider'>
-						Main
+						Main Menu
 					</p>
 				</div>
 
@@ -42,12 +42,12 @@ const Sidebar = () => {
 						key={item.to}
 						to={item.to}
 						className={({ isActive }) =>
-							`w-full flex items-center space-x-3 px-6 py-3 text-left hover:bg-slate-800 transition-colors ${
-								isActive ? 'bg-slate-800 border-r-2 border-blue-500' : ''
+							`w-full flex items-center space-x-4 px-6 py-3 text-left hover:bg-sidebar-active transition-colors duration-200 ${
+								isActive ? 'bg-sidebar-active border-r-4 border-primary' : ''
 							}`
 						}>
-						<item.icon className='w-5 h-5' />
-						<span>{item.label}</span>
+						<item.icon className='w-6 h-6' />
+						<span className="text-lg font-medium">{item.label}</span>
 					</NavLink>
 				))}
 			</nav>

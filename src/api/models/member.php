@@ -46,6 +46,22 @@ class Member
         return $stmt;
     }
 
+    public function getAllWithPagination($limit = 10, $offset = 0)
+    {
+        $query = "SELECT m.*, mu.phone_number as mobile_phone, mu.is_verified,
+                     CASE WHEN mu.mid IS NOT NULL THEN 'Mobile' ELSE 'Web' END as source
+                     FROM " . $this->table_name . " m
+                     LEFT JOIN " . $this->mobile_table . " mu ON m.mid = mu.mid
+                     ORDER BY m.created_at DESC
+                     LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt;
+    }
+
     // Get members count
     public function getTotalCount()
     {
@@ -205,6 +221,49 @@ class Member
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':mid', $this->mid);
         return $stmt->execute();
+    }
+    // Add this method to your Member class
+    public function bulkCreate($membersData)
+    {
+        try {
+            $this->conn->beginTransaction();
+
+            $query = "INSERT INTO " . $this->table_name . "
+                  (first_name, last_name, gender, dob, address, phone_number, profile_completed)
+                  VALUES (:first_name, :last_name, :gender, :dob, :address, :phone_number, :profile_completed)";
+
+            $stmt = $this->conn->prepare($query);
+
+            $successCount = 0;
+            foreach ($membersData as $memberData) {
+                // Sanitize inputs
+                $first_name = htmlspecialchars(strip_tags($memberData['first_name']));
+                $last_name = htmlspecialchars(strip_tags($memberData['last_name']));
+                $gender = htmlspecialchars(strip_tags($memberData['gender']));
+                $address = isset($memberData['address']) ? htmlspecialchars(strip_tags($memberData['address'])) : null;
+                $phone_number = isset($memberData['phone_number']) ? htmlspecialchars(strip_tags($memberData['phone_number'])) : null;
+                $profile_completed = isset($memberData['profile_completed']) ? $memberData['profile_completed'] : 0;
+
+                // Bind parameters
+                $stmt->bindParam(':first_name', $first_name);
+                $stmt->bindParam(':last_name', $last_name);
+                $stmt->bindParam(':gender', $gender);
+                $stmt->bindParam(':dob', $memberData['dob']);
+                $stmt->bindParam(':address', $address);
+                $stmt->bindParam(':phone_number', $phone_number);
+                $stmt->bindParam(':profile_completed', $profile_completed);
+
+                if ($stmt->execute()) {
+                    $successCount++;
+                }
+            }
+
+            $this->conn->commit();
+            return $successCount;
+        } catch (Exception $e) {
+            $this->conn->rollBack();
+            return false;
+        }
     }
 
     // Get recent member registrations

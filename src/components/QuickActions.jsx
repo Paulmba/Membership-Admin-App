@@ -1,18 +1,18 @@
 import React from 'react';
 
 const QuickActions = ({ actions }) => (
-	<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
-		<h3 className='text-lg font-semibold text-gray-900 mb-4'>Quick Actions</h3>
-		<div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+	<div className='bg-white rounded-2xl shadow-lg p-6'>
+		<h3 className='text-xl font-bold text-gray-800 mb-6'>Quick Actions</h3>
+		<div className='grid grid-cols-2 md:grid-cols-4 gap-6'>
 			{actions.map((action, idx) => (
 				<button
 					key={idx}
-					className='flex flex-col items-center p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors'>
+					className='flex flex-col items-center justify-center p-4 rounded-2xl border border-gray-200 hover:bg-gray-100 hover:shadow-md transition-all duration-200 transform hover:-translate-y-1'>
 					<div
-						className={`w-12 h-12 rounded-lg ${action.color} flex items-center justify-center mb-2`}>
-						<action.icon className='w-6 h-6 text-white' />
+						className={`w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-3`}>
+						<action.icon className='w-7 h-7 text-primary' />
 					</div>
-					<span className='text-sm font-medium text-gray-900'>
+					<span className='text-base font-semibold text-gray-700'>
 						{action.label}
 					</span>
 				</button>

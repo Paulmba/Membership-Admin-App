@@ -46,6 +46,8 @@ function handleGetRequest($member)
         $source = isset($_GET['source']) ? $_GET['source'] : null;
         $search = isset($_GET['search']) ? $_GET['search'] : null;
         $id = isset($_GET['id']) ? $_GET['id'] : null;
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
+        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
 
         if ($id) {
             // Get specific member
@@ -65,13 +67,13 @@ function handleGetRequest($member)
                 http_response_code(404);
             }
         } else {
-            // Get all members with filters
+            // Get all members with filters and pagination
             if ($search) {
                 $stmt = $member->search($search);
             } elseif ($source) {
                 $stmt = $member->getBySource($source);
             } else {
-                $stmt = $member->getAll();
+                $stmt = $member->getAllWithPagination($limit, $offset);
             }
 
             $members = [];
@@ -79,10 +81,11 @@ function handleGetRequest($member)
                 $members[] = formatMemberData($row);
             }
 
+            $totalRecords = $member->getTotalCount();
             $response = [
                 'success' => true,
                 'data' => $members,
-                'total' => count($members)
+                'total' => $totalRecords
             ];
         }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
 	BarChart,
 	Bar,
@@ -27,65 +27,54 @@ import {
 	MessageSquare,
 	Send,
 } from 'lucide-react';
+import { AnalyticsContext } from '../layouts/AdminLayout';
+import { jsPDF } from 'jspdf';
+import { marked } from 'marked';
+
+const getStyledHtml = (title, htmlContent) => {
+		return `
+			<div style="font-family: 'Helvetica', 'sans-serif'; font-size: 10pt; line-height: 1.5; max-width: 180mm;">
+				<style>
+					h1, h2, h3, h4, h5, h6 { margin-bottom: 8px; }
+					p { margin-bottom: 12px; }
+					ul, ol { margin-bottom: 12px; padding-left: 20px; }
+					li { margin-bottom: 4px; }
+				</style>
+				<h1>${title}</h1>
+				${htmlContent}
+			</div>
+		`;
+	};
 
 // Define your backend API URLs here
 // IMPORTANT: Ensure these URLs correctly point to your running PHP backend.
 // If your PHP server is on a different port (e.g., 8000), update localhost: to localhost:8000/
-const ANALYTICS_API_URL = 'http://localhost:8000/api/ai_analytics.php'; // Replace with your actual analytics API URL
 const REPORTS_API_URL = 'http://localhost:8000/api/ai_reports.php'; // Replace with your actual reports API URL
 
 const AIAnalytics = () => {
 	const [activeTab, setActiveTab] = useState('analytics');
-
-	// Global state for data persistence across tabs
-	const [analyticsData, setAnalyticsData] = useState(null);
-	const [analyticsLoading, setAnalyticsLoading] = useState(false);
-	const [reportData, setReportData] = useState(null);
-	const [customQueryData, setCustomQueryData] = useState(null);
-	const [error, setError] = useState(null);
-
-	// Fetch analytics data
-	const fetchAnalytics = useCallback(async () => {
-		setAnalyticsLoading(true);
-		setError(null);
-		try {
-			// Log the URL to help debug if it's incorrect
-			console.log('Attempting to fetch analytics from:', ANALYTICS_API_URL);
-			const response = await fetch(ANALYTICS_API_URL);
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(
-					`HTTP error! status: ${response.status}, message: ${errorText}`
-				);
-			}
-			const data = await response.json();
-			if (data.success) {
-				setAnalyticsData(data.analytics);
-			} else {
-				setError(data.message || 'Failed to fetch analytics from API');
-			}
-		} catch (err) {
-			setError(
-				'Error fetching analytics. Please check your connection and API endpoint.'
-			);
-			console.error('Analytics Fetch Error:', err);
-		} finally {
-			setAnalyticsLoading(false);
-		}
-	}, []);
+	const {
+		analyticsState,
+		reportData,
+		setReportData,
+		customQueryData,
+		setCustomQueryData,
+		error,
+		setError,
+		fetchAnalytics,
+	} = useContext(AnalyticsContext);
 
 	// Load analytics data on component mount or tab switch
 	useEffect(() => {
-		if (activeTab === 'analytics' && !analyticsData && !analyticsLoading) {
+		if (activeTab === 'analytics' && !analyticsState.data && !analyticsState.loading) {
 			fetchAnalytics();
 		}
-	}, [activeTab, analyticsData, analyticsLoading, fetchAnalytics]);
+	}, [activeTab, analyticsState.data, analyticsState.loading, fetchAnalytics]);
 
 	// AI Report Generation Component
 	const ReportGeneration = ({ reportData, setReportData, setError }) => {
 		const [reportType, setReportType] = useState('membership_summary');
 		const [reportPeriod, setReportPeriod] = useState('last_30_days');
-		const [addressTerm, setAddressTerm] = useState(''); // New state for address term
 		const [generatingReport, setGeneratingReport] = useState(false);
 
 		const reportTypes = [
@@ -93,7 +82,7 @@ const AIAnalytics = () => {
 			{ value: 'growth_analysis', label: 'Growth Analysis' },
 			{ value: 'demographic_insights', label: 'Demographic Insights' },
 			{ value: 'engagement_metrics', label: 'Engagement Metrics' },
-			{ value: 'custom_analysis', label: 'Custom Address Analysis' }, // Added for clarity
+			{ value: 'area_report', label: 'Area Report' },
 		];
 
 		const periods = [
@@ -109,16 +98,12 @@ const AIAnalytics = () => {
 
 			setGeneratingReport(true);
 			setError(null);
-			setReportData(null);
 
 			try {
 				const payload = {
 					report_type: reportType,
 					period: reportPeriod,
 				};
-				if (reportType === 'custom_analysis') {
-					payload.address_term = addressTerm; // Only send if custom analysis
-				}
 
 				// Log the URL and payload to help debug
 				console.log(
@@ -159,26 +144,52 @@ const AIAnalytics = () => {
 		}, [
 			reportType,
 			reportPeriod,
-			addressTerm,
 			generatingReport,
 			setReportData,
 			setError,
 		]);
 
-		const downloadReport = (format = 'txt') => {
-			// Default to TXT as PDF generation is complex client-side
+		const downloadReport = async () => {
 			if (!reportData) return;
 
-			const element = document.createElement('a');
-			// For simplicity, we'll download as plain text. Actual PDF generation is more involved.
-			const file = new Blob([reportData.content], {
-				type: 'text/plain',
+			const doc = new jsPDF({
+				orientation: 'p',
+				unit: 'mm',
+				format: 'a4'
 			});
-			element.href = URL.createObjectURL(file);
-			element.download = `${reportData.title.replace(/ /g, '_')}.${format}`;
-			document.body.appendChild(element);
-			element.click();
-			document.body.removeChild(element);
+
+			// Custom renderer for marked to remove horizontal rules
+			const renderer = new marked.Renderer();
+			renderer.hr = () => ''; // Render nothing for <hr> tags
+
+			const htmlContent = await marked(reportData.content, { renderer });
+
+			// Add more specific styling for paragraphs and headings
+			const styledHtml = `
+				<div style="font-family: 'Helvetica', 'sans-serif'; font-size: 10pt; line-height: 1.5; max-width: 180mm;">
+					<style>
+						h1, h2, h3, h4, h5, h6 { margin-bottom: 8px; }
+						p { margin-bottom: 12px; }
+						ul, ol { margin-bottom: 12px; padding-left: 20px; }
+						li { margin-bottom: 4px; }
+					</style>
+					<h1>${reportData.title}</h1>
+					${htmlContent}
+				</div>
+			`;
+
+			doc.html(styledHtml, {
+				callback: function (doc) {
+					const fileName = `${reportData.title.replace(/ /g, '_')}.pdf`;
+					doc.save(fileName);
+				},
+				margin: [15, 15, 15, 15], // top, right, bottom, left
+				autoPaging: 'slice', // Try 'slice' for better page breaking
+				x: 15,
+				y: 15,
+				width: 180,
+				windowWidth: 800
+			});
 		};
 
 		return (
@@ -266,10 +277,10 @@ const AIAnalytics = () => {
 							</h4>
 							<div className='flex space-x-2'>
 								<button
-									onClick={() => downloadReport('txt')}
+									onClick={downloadReport}
 									className='flex items-center px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm'>
 									<Download className='w-4 h-4 mr-1' />
-									Download TXT
+									Download PDF
 								</button>
 							</div>
 						</div>
@@ -293,7 +304,7 @@ const AIAnalytics = () => {
 
 	// Smart Analytics Component
 	const SmartAnalytics = ({ analyticsData, analyticsLoading, onRefresh }) => {
-		const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+		const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#FF5733', '#C70039', '#900C3F'];
 
 		if (analyticsLoading) {
 			return (
@@ -410,7 +421,7 @@ const AIAnalytics = () => {
 				<div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
 					<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6'>
 						<h4 className='text-lg font-semibold text-gray-900 mb-4'>
-							Membership Growth Trend
+							Membership Growth Trend (Last 7 Days)
 						</h4>
 						<ResponsiveContainer width='100%' height={300}>
 							<LineChart data={analyticsData.growth_data}>
@@ -440,8 +451,8 @@ const AIAnalytics = () => {
 									cx='50%'
 									cy='50%'
 									labelLine={false}
-									label={({ name, percent }) =>
-										`${name} ${(percent * 100).toFixed(0)}%`
+									label={({ name, percent, value }) =>
+										`${name}: ${value} (${(percent * 100).toFixed(0)}%)`
 									}
 									outerRadius={100}
 									fill='#8884d8'
@@ -533,12 +544,50 @@ const AIAnalytics = () => {
 		const [queryLoading, setQueryLoading] = useState(false);
 		const [queryHistory, setQueryHistory] = useState([]); // This will store past queries and their responses
 
-		const predefinedPrompts = [
-			'Analyze the demographics of our most active members.',
-			'What trends can you identify in our membership growth over the past year?',
-			'compare the locations and suggest where the church membership is most present.',
-			'Analyze the correlation between member age and platform usage patterns.',
-		];
+		const downloadCustomReport = async () => {
+			if (!customQueryData) return;
+
+			const doc = new jsPDF({
+				orientation: 'p',
+				unit: 'mm',
+				format: 'a4'
+			});
+
+			const renderer = new marked.Renderer();
+			renderer.hr = () => '';
+
+			const htmlContent = await marked(customQueryData.response, { renderer });
+
+			const styledHtml = `
+				<div style="font-family: 'Helvetica', 'sans-serif'; font-size: 10pt; line-height: 1.5; max-width: 180mm;">
+					<style>
+						h1, h2, h3, h4, h5, h6 { margin-bottom: 8px; }
+						p { margin-bottom: 12px; }
+						ul, ol { margin-bottom: 12px; padding-left: 20px; }
+						li { margin-bottom: 4px; }
+					</style>
+					<h1>Custom AI Analysis</h1>
+					<h3>Your Prompt:</h3>
+					<p>${customQueryData.prompt}</p>
+					<hr />
+					<h3>AI Response:</h3>
+					${htmlContent}
+				</div>
+			`;
+
+			doc.html(styledHtml, {
+				callback: function (doc) {
+					const fileName = `Custom_AI_Analysis.pdf`;
+					doc.save(fileName);
+				},
+				margin: [15, 15, 15, 15],
+				autoPaging: 'slice',
+				x: 15,
+				y: 15,
+				width: 180,
+				windowWidth: 800
+			});
+		};
 
 		const executeCustomQuery = useCallback(async () => {
 			if (!customPrompt.trim() || queryLoading) return;
@@ -668,9 +717,17 @@ const AIAnalytics = () => {
 
 				{customQueryData && (
 					<div className='bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-fade-in'>
-						<h4 className='text-xl font-bold text-gray-900 mb-4'>
-							AI Response to Your Query
-						</h4>
+						<div className='flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4'>
+							<h4 className='text-xl font-bold text-gray-900 mb-2 sm:mb-0'>
+								AI Response to Your Query
+							</h4>
+							<button
+								onClick={downloadCustomReport}
+								className='flex items-center px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm'>
+								<Download className='w-4 h-4 mr-1' />
+								Download PDF
+							</button>
+						</div>
 						<div className='prose max-w-none'>
 							<div className='bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4'>
 								<p className='text-sm text-gray-800 font-semibold mb-2'>
@@ -800,8 +857,8 @@ const AIAnalytics = () => {
 
 				{activeTab === 'analytics' && (
 					<SmartAnalytics
-						analyticsData={analyticsData}
-						analyticsLoading={analyticsLoading}
+						analyticsData={analyticsState.data}
+						analyticsLoading={analyticsState.loading}
 						onRefresh={fetchAnalytics}
 					/>
 				)}

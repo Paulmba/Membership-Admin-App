@@ -7,6 +7,7 @@ class Database
     private $username = 'root';
     private $password = '1234567890';
     public $conn;
+    public $gemini_api_key = 'AIzaSyDpJm1CJCt4MYAZ3lvf_3fIEn7cBeZu9co'; // Your Gemini API Key
 
     public function getConnection()
     {

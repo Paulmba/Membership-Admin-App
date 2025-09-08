@@ -79,15 +79,15 @@ try {
     $mobileUsers = 0;
     $verifiedMembers = 0;
     $ageSum = 0;
-    $genderDistribution = ['Male' => 0, 'Female' => 0];
+    $genderDistribution = [];
     $sourceDistribution = ['Mobile' => 0, 'Web' => 0];
     $ageDistribution = []; // For the chart
     $growthData = []; // For the chart
 
-    // Initialize growth data for past 12 months for chart
-    for ($i = 11; $i >= 0; $i--) {
-        $month = date('Y-m', strtotime("-$i months"));
-        $growthData[$month] = 0;
+    // Initialize growth data for past 7 days for chart
+    for ($i = 6; $i >= 0; $i--) {
+        $day = date('Y-m-d', strtotime("-$i days"));
+        $growthData[$day] = 0;
     }
 
     foreach ($all_members as $m) {
@@ -100,7 +100,14 @@ try {
             $verifiedMembers++;
         }
         // Gender Distribution
-        $genderDistribution[$m['gender']] = ($genderDistribution[$m['gender']] ?? 0) + 1;
+        $gender_mapping = [
+            'M' => 'Male',
+            'F' => 'Female',
+            'O' => 'Other',
+            'P' => 'Prefer not to say'
+        ];
+        $gender_full = isset($gender_mapping[$m['gender']]) ? $gender_mapping[$m['gender']] : $m['gender'];
+        $genderDistribution[$gender_full] = ($genderDistribution[$gender_full] ?? 0) + 1;
         // Source Distribution
         $sourceDistribution[$m['source']] = ($sourceDistribution[$m['source']] ?? 0) + 1;
 
@@ -123,11 +130,11 @@ try {
             $ageDistribution[$ageGroup] = ($ageDistribution[$ageGroup] ?? 0) + 1;
         }
 
-        // Growth Data (monthly registrations)
+        // Growth Data (daily registrations)
         if (!empty($m['created_at'])) {
-            $regMonth = date('Y-m', strtotime($m['created_at']));
-            if (isset($growthData[$regMonth])) {
-                $growthData[$regMonth]++;
+            $regDay = date('Y-m-d', strtotime($m['created_at']));
+            if (isset($growthData[$regDay])) {
+                $growthData[$regDay]++;
             }
         }
     }
@@ -195,21 +202,7 @@ try {
 
     // --- 3. Prepare Prompt for Gemini for AI Insights ---
     // Refined prompt for stricter JSON output
-    $ai_insights_prompt = "Generate 3 concise and actionable AI-generated insights and recommendations based on the following membership analytics data. " .
-        "Each insight must have a 'title' (string), 'description' (string), and a 'recommendation' (string). and should contain really brief explanations and in basic terminologies for anyone to understand " .
-        "**ONLY return a JSON array of objects. Do NOT include any other text, greetings, or explanations outside the JSON.** " .
-        "The JSON structure must be: " .
-        "[\n  {\"title\": \"Insight Title\", \"description\": \"Insight description.\", \"recommendation\": \"Actionable recommendation.\"}\n]\n\n" .
-        "Analytics Data:\n" .
-        "- Total Members: {$totalMembers}\n" .
-        "- Growth Rate (from last month): {$growthRate}%\n" .
-        "- Mobile Users: {$mobileUsers} ({$mobilePercentage}%)\n" .
-        "- Verified Members: {$verifiedMembers} ({$verificationRate}% verification rate)\n" .
-        "- Average Age: {$averageAge}\n" .
-        "- Most Common Age Group: {$mostCommonAgeGroup}\n" .
-        "- Gender Distribution: " . json_encode($genderDistribution) . "\n" .
-        "- Registration Source Distribution: " . json_encode($sourceDistribution) . "\n" .
-        "- Monthly Growth Trend (cumulative members): " . json_encode($formattedGrowthData) . "\n";
+    $ai_insights_prompt = "Generate 3 concise and actionable AI-generated insights and recommendations based on the following membership analytics data. " .        "Each insight must have a 'title' (string), 'description' (string), and a 'recommendation' (string). and should contain really brief explanations and in basic terminologies for anyone to understand " .        "Focus on providing insights about member demographics, engagement, and growth opportunities. Avoid focusing on web and mobile registration unless it's a significant factor in the other areas." .        "**ONLY return a JSON array of objects. Do NOT include any other text, greetings, or explanations outside the JSON.** " .        "The JSON structure must be: " .        "[\n  {\"title\": \"Insight Title\", \"description\": \"Insight description.\", \"recommendation\": \"Actionable recommendation.\"}\n]\n\n" .        "Analytics Data:\n" .        "- Total Members: {$totalMembers}\n" .        "- Growth Rate (from last month): {$growthRate}%\n" .        "- Verified Members: {$verifiedMembers} ({$verificationRate}% verification rate)\n" .        "- Average Age: {$averageAge}\n" .        "- Most Common Age Group: {$mostCommonAgeGroup}\n" .        "- Gender Distribution: " . json_encode($genderDistribution) . "\n" .        "- Monthly Growth Trend (cumulative members): " . json_encode($formattedGrowthData) . "\n";
 
     $geminiResponse = callGeminiAPI($ai_insights_prompt);
     $ai_insights = [];

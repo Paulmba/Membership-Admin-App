@@ -9,6 +9,7 @@ import {
 	Filter,
 	AlertCircle,
 	X,
+	Upload,
 } from 'lucide-react';
 
 const Members = () => {
@@ -23,33 +24,39 @@ const Members = () => {
 	const [detailMember, setDetailMember] = useState(null);
 	const [showEditModal, setShowEditModal] = useState(false);
 	const [editingMember, setEditingMember] = useState(null);
+	const [showBulkImportModal, setShowBulkImportModal] = useState(false);
+	const [page, setPage] = useState(1);
+	const [hasMore, setHasMore] = useState(true);
+	const [totalMembers, setTotalMembers] = useState(0);
 
 	useEffect(() => {
-		fetchMembers();
-	}, []);
+		fetchMembers(null, null, page);
+	}, [page]);
 
 	useEffect(() => {
 		filterMembers();
 	}, [members, activeTab, searchTerm]);
 
-	const fetchMembers = async (source = null, search = null) => {
+	const fetchMembers = async (source = null, search = null, page = 1) => {
 		try {
 			setLoading(true);
-			let url = 'http://localhost:8000/api/members.php';
+			let url = `http://localhost:8000/api/members.php?page=${page}&limit=10`;
 			const params = new URLSearchParams();
 
 			if (source) params.append('source', source);
 			if (search) params.append('search', search);
 
 			if (params.toString()) {
-				url += '?' + params.toString();
+				url += '&' + params.toString();
 			}
 
 			const response = await fetch(url);
 			const data = await response.json();
 
 			if (data.success) {
-				setMembers(data.data);
+				setMembers(prevMembers => page === 1 ? data.data : [...prevMembers, ...data.data]);
+				setTotalMembers(data.total);
+				setHasMore(data.data.length > 0);
 				setError(null);
 			} else {
 				setError(data.message || 'Failed to fetch members');
@@ -176,6 +183,11 @@ const Members = () => {
 			console.error('Add member error:', err);
 		}
 	};
+	const handleBulkImport = (importedMembers) => {
+		setMembers((prev) => [...prev, ...importedMembers]);
+		setError(null);
+	};
+
 	const handleEditMember = async (memberData) => {
 		try {
 			const response = await fetch('http://localhost:8000/api/members.php', {
@@ -281,16 +293,25 @@ const Members = () => {
 			<div className='flex justify-between items-center'>
 				<h3 className='text-xl font-semibold text-gray-900 flex items-center space-x-2'>
 					<Users className='w-6 h-6' />
-					<span>Members ({filteredMembers.length})</span>
+					<span>Members ({totalMembers})</span>
 				</h3>
-				<button
-					onClick={() => setShowAddModal(true)}
-					className='flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'>
-					<Plus className='w-4 h-4 mr-2' /> Add New Member
-				</button>
+				<div className="flex space-x-2">
+					<button
+						onClick={() => setShowAddModal(true)}
+						className='flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'>
+						<Plus className='w-4 h-4 mr-2' /> Add New Member
+					</button>
+					<button
+						onClick={() => setShowBulkImportModal(true)}
+						className='flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors'>
+						<Upload className='w-4 h-4 mr-2' /> Bulk Import from CSV
+					</button>
+				</div>
 			</div>
 
-			<div className='flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-4'>
+			
+
+			<div className='flex justify-between items-center'>
 				<div className='flex items-center space-x-2'>
 					<Filter className='w-4 h-4 text-gray-500' />
 					<div className='flex space-x-2'>
@@ -313,7 +334,7 @@ const Members = () => {
 					</div>
 				</div>
 
-				<div className='flex-1 sm:max-w-md'>
+				<div className='flex items-center space-x-2'>
 					<div className='relative'>
 						<Search className='absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400' />
 						<input
@@ -324,6 +345,14 @@ const Members = () => {
 							className='w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
 						/>
 					</div>
+					{hasMore && (
+						<button
+							onClick={() => setPage(prevPage => prevPage + 1)}
+							disabled={loading}
+							className='flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'>
+							{loading ? 'Loading...' : 'Load More'}
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -445,6 +474,13 @@ const Members = () => {
 				<AddMemberModal
 					onClose={() => setShowAddModal(false)}
 					onSubmit={handleAddMember}
+				/>
+			)}
+			{/* Bulk Import Modal */}
+			{showBulkImportModal && (
+				<BulkImportModal
+					onClose={() => setShowBulkImportModal(false)}
+					onImport={handleBulkImport}
 				/>
 			)}
 			{/* Edit Member Modal - ADD THIS */}
@@ -644,6 +680,131 @@ const AddMemberModal = ({ onClose, onSubmit }) => {
 		</div>
 	);
 };
+// Add the BulkImportModal component
+const BulkImportModal = ({ onClose, onImport }) => {
+	const [file, setFile] = useState(null);
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleFileChange = (e) => {
+		const selectedFile = e.target.files[0];
+		if (selectedFile && selectedFile.type === 'text/csv') {
+			setFile(selectedFile);
+			setError(null);
+		} else {
+			setError('Please select a valid CSV file');
+		}
+	};
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!file) {
+			setError('Please select a CSV file');
+			return;
+		}
+
+		setIsSubmitting(true);
+		console.log("Submitting file:", file);
+		try {
+			const formData = new FormData();
+			formData.append('csvFile', file);
+
+			console.log("Sending request to bulk-import.php");
+			const response = await fetch(
+				'http://localhost:8000/api/bulk-import.php',
+				{
+					method: 'POST',
+					body: formData,
+				}
+			);
+
+			console.log("Received response from bulk-import.php:", response);
+			const data = await response.json();
+			console.log("Parsed response data:", data);
+
+			if (data.success) {
+				onImport(data.data);
+				onClose();
+			} else {
+				setError(data.message || 'Failed to import members');
+			}
+		} catch (err) {
+			setError('Error importing members');
+			console.error('Bulk import error:', err);
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	return (
+		<div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
+			<div className='bg-white rounded-lg max-w-md w-full p-6'>
+				<div className='flex justify-between items-center mb-4'>
+					<h3 className='text-lg font-semibold'>Bulk Import Members</h3>
+					<button
+						onClick={onClose}
+						className='text-gray-500 hover:text-gray-700'
+						disabled={isSubmitting}>
+						<X className='w-5 h-5' />
+					</button>
+				</div>
+
+				<form onSubmit={handleSubmit} className='space-y-4'>
+					<div>
+						<label className='block text-sm font-medium text-gray-700 mb-1'>
+							CSV File *
+						</label>
+						<input
+							type='file'
+							accept='.csv'
+							onChange={handleFileChange}
+							required
+							disabled={isSubmitting}
+							className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+						/>
+						<p className='text-xs text-gray-500 mt-1'>
+							CSV format should include: first_name, last_name, gender, dob,
+							address, phone_number
+						</p>
+					</div>
+
+					{error && (
+						<div className='bg-red-50 border border-red-200 rounded-lg p-3'>
+							<div className='flex items-center space-x-2'>
+								<AlertCircle className='w-4 h-4 text-red-500' />
+								<span className='text-red-700 text-sm'>{error}</span>
+							</div>
+						</div>
+					)}
+
+					<div className='flex justify-end space-x-3 pt-4'>
+						<button
+							type='button'
+							onClick={onClose}
+							disabled={isSubmitting}
+							className='px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50'>
+							Cancel
+						</button>
+						<button
+							type='submit'
+							disabled={isSubmitting || !file}
+							className='px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center'>
+							{isSubmitting ? (
+								<>
+									<div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2'></div>
+									Importing...
+								</>
+							) : (
+								'Import Members'
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+};
+
 // Edit Member Modal Component
 const EditMemberModal = ({ member, onClose, onSubmit }) => {
 	const [formData, setFormData] = useState({

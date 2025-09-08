@@ -1,4 +1,5 @@
 <?php
+ini_set('max_execution_time', 300);
 // api/ai_reports.php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *'); // Restrict in production
@@ -14,15 +15,14 @@ include_once __DIR__ . '/config/Database.php';
 include_once __DIR__ . '/models/Member.php';
 
 // Gemini API call with retries
-function callGeminiAPI($prompt, $model = 'gemini-2.5-flash-preview-05-20', $maxRetries = 3, $initialDelay = 1000)
+function callGeminiAPI($prompt, $apiKey, $model = 'gemini-2.5-flash-preview-05-20', $maxRetries = 3, $initialDelay = 1000)
 {
-    $GEMINI_API_KEY = 'AIzaSyDpJm1CJCt4MYAZ3lvf_3fIEn7cBeZu9co'; // Replace with your key
-    if (empty($GEMINI_API_KEY)) {
-        error_log("GEMINI_API_KEY is not set.");
+    if (empty($apiKey)) {
+        error_log("GEMINI_API_KEY is not configured.");
         return ['success' => false, 'message' => 'API Key not configured.'];
     }
 
-    $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $GEMINI_API_KEY;
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $apiKey;
     $payload = json_encode([
         'contents' => [
             ['parts' => [['text' => $prompt]]]
@@ -36,7 +36,7 @@ function callGeminiAPI($prompt, $model = 'gemini-2.5-flash-preview-05-20', $maxR
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 90); // Increased timeout for larger model
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -64,30 +64,21 @@ function callGeminiAPI($prompt, $model = 'gemini-2.5-flash-preview-05-20', $maxR
 
 $database = new Database();
 $db = $database->getConnection();
+$geminiApiKey = $database->gemini_api_key;
 $member = new Member($db);
 
 $input = json_decode(file_get_contents("php://input"));
 
 $reportType = $input->report_type ?? 'membership_summary';
 $period = $input->period ?? 'last_30_days';
-$addressTerm = $input->address_term ?? null;
 $userQuery = $input->user_query ?? null;
-$simpleMode = $input->simple_mode ?? false;
 
-$dataForReport = [];
 $reportTitle = "AI-Generated Report";
 $prompt = "";
 
 try {
     $members_array = [];
-    $stmt = null;
-
-    if ($reportType === 'custom_analysis' && !empty($addressTerm)) {
-        $stmt = $member->getByAddressSimilarity($addressTerm);
-        $reportTitle = "Custom Analysis for " . htmlspecialchars($addressTerm) . " Area";
-    } else {
-        $stmt = $member->getAll();
-    }
+    $stmt = $member->getAll();
 
     if ($stmt) {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -100,26 +91,30 @@ try {
             $reportTitle = "Membership Summary for " . ucwords(str_replace('_', ' ', $period));
 
             $totalMembers = $member->getTotalCount();
-            $mobileUsersCount = $member->getMobileUsersCount();
-            $webUsersCount = $totalMembers - $mobileUsersCount;
-
             $verifiedMembers = 0;
             $genderDistribution = ['Male' => 0, 'Female' => 0];
             $sourceDistribution = ['Mobile' => 0, 'Web' => 0];
             $ageGroups = [];
+            $locationCounts = [];
 
             foreach ($members_array as $mem) {
-                if (!empty($mem['is_verified']) && $mem['is_verified'] == 1) {
-                    $verifiedMembers++;
+                if (!empty($mem['is_verified']) && $mem['is_verified'] == 1) $verifiedMembers++;
+
+                if (isset($mem['gender'])) {
+                    if ($mem['gender'] === 'M') {
+                        $genderDistribution['Male']++;
+                    } elseif ($mem['gender'] === 'F') {
+                        $genderDistribution['Female']++;
+                    }
                 }
-                $genderDistribution[$mem['gender']] = ($genderDistribution[$mem['gender']] ?? 0) + 1;
-                $sourceDistribution[$mem['source']] = ($sourceDistribution[$mem['source']] ?? 0) + 1;
+
+                if (isset($mem['source'])) {
+                    $sourceDistribution[$mem['source']] = ($sourceDistribution[$mem['source']] ?? 0) + 1;
+                }
 
                 if (!empty($mem['dob'])) {
                     $birthDate = new DateTime($mem['dob']);
-                    $currentDate = new DateTime();
-                    $age = $currentDate->diff($birthDate)->y;
-
+                    $age = $birthDate->diff(new DateTime())->y;
                     if ($age < 18) $ageGroup = 'Under 18';
                     else if ($age <= 24) $ageGroup = '18-24';
                     else if ($age <= 34) $ageGroup = '25-34';
@@ -127,50 +122,77 @@ try {
                     else if ($age <= 54) $ageGroup = '45-54';
                     else if ($age <= 64) $ageGroup = '55-64';
                     else $ageGroup = '65+';
-
                     $ageGroups[$ageGroup] = ($ageGroups[$ageGroup] ?? 0) + 1;
                 }
-            }
 
-            $prompt = "Create a simple membership summary for " . ucwords(str_replace('_', ' ', $period)) . ". " .
-                "Totals and counts:\n" .
-                "- Total members: {$totalMembers}\n" .
-                "- Mobile users: {$mobileUsersCount}\n" .
-                "- Web users: {$webUsersCount}\n" .
-                "- Verified members: {$verifiedMembers}\n" .
-                "- Gender counts: " . json_encode($genderDistribution) . "\n" .
-                "- User sources: " . json_encode($sourceDistribution) . "\n" .
-                "- Age groups: " . json_encode($ageGroups) . "\n\n" .
-                "Use clear, brief sentences.";
+                if (!empty($mem['address'])) {
+                    $locationCounts[$mem['address']] = ($locationCounts[$mem['address']] ?? 0) + 1;
+                }
+            }
+            arsort($locationCounts);
+
+            $prompt = "Generate a membership summary report. The report should have a clear introduction, body, and conclusion.
+
+**Data for the period " . ucwords(str_replace('_', ' ', $period)) . ":**
+- Total Members: {$totalMembers}
+- Verified Members: {$verifiedMembers}
+- User Sources: " . json_encode($sourceDistribution) . "
+- Gender Distribution: " . json_encode($genderDistribution) . "
+- Age Group Distribution: " . json_encode($ageGroups) . "
+- Location Distribution: " . json_encode($locationCounts) . "
+
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly explain the purpose of the report.
+3.  **Body:**
+    *   Present the key metrics in a clear, easy-to-read format using markdown.
+    *   Provide a short analysis of each key area (Sources, Gender, Age, Location).
+4.  **Conclusion:**
+    *   Summarize the key findings.
+    *   Provide one or two simple, actionable recommendations that are practical and culturally appropriate for the local context.
+5.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the key insight from the report, enclosed in <summary> tags.";
             break;
 
         case 'growth_analysis':
-            $reportTitle = "Membership Growth for " . ucwords(str_replace('_', ' ', $period));
-
-            $growth_data_query = "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as members_added
-                                  FROM " . $member->getTableName() . "
-                                  WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-                                  GROUP BY month ORDER BY month ASC";
+            $reportTitle = "Membership Growth Analysis";
+            $growth_data_query = "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as members_added FROM " . $member->getTableName() . " WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH) GROUP BY month ORDER BY month ASC";
             $stmt_growth = $db->prepare($growth_data_query);
             $stmt_growth->execute();
             $growth_data = $stmt_growth->fetchAll(PDO::FETCH_ASSOC);
 
-            $prompt = "Analyze membership growth for " . ucwords(str_replace('_', ' ', $period)) . ". " .
-                "Monthly new members:\n" .
-                json_encode($growth_data) . "\n\n" .
-                "Explain trends and suggest simple church activities to encourage growth. Keep it short.";
+            $prompt = "Generate a membership growth analysis report. The report should have a clear introduction, body, and conclusion.
+
+**Monthly New Member Data:**
+" . json_encode($growth_data) . "
+
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly explain the purpose of the report.
+3.  **Body:**
+    *   Analyze the growth trend, pointing out any significant increases, decreases, or patterns.
+    *   Identify potential reasons for the observed trends (e.g., seasonal changes, local events).
+4.  **Conclusion:**
+    *   Summarize the main growth trend.
+    *   Offer 2-3 practical and simple activities the church could organize to boost membership growth, considering the local context.
+5.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the main growth trend, enclosed in <summary> tags.";
             break;
 
         case 'demographic_insights':
-            $reportTitle = "Demographic Insights for " . ucwords(str_replace('_', ' ', $period));
-
-            $gender_query = "SELECT gender, COUNT(*) as count FROM " . $member->getTableName() . " GROUP BY gender";
-            $age_query = "SELECT FLOOR(DATEDIFF(NOW(), dob) / 365) AS age_raw, COUNT(*) AS count FROM " . $member->getTableName() . " GROUP BY age_raw ORDER BY age_raw ASC";
-
+            $reportTitle = "Demographic Insights Report";
+            $gender_query = "SELECT gender, COUNT(*) as count FROM " . $member->getTableName() . " WHERE gender IN ('M', 'F') GROUP BY gender";
             $stmt_gender = $db->prepare($gender_query);
             $stmt_gender->execute();
-            $gender_data = $stmt_gender->fetchAll(PDO::FETCH_ASSOC);
+            $gender_data_raw = $stmt_gender->fetchAll(PDO::FETCH_ASSOC);
+            $gender_data = ['Male' => 0, 'Female' => 0];
+            foreach ($gender_data_raw as $row) {
+                if ($row['gender'] === 'M') {
+                    $gender_data['Male'] = $row['count'];
+                } elseif ($row['gender'] === 'F') {
+                    $gender_data['Female'] = $row['count'];
+                }
+            }
 
+            $age_query = "SELECT FLOOR(DATEDIFF(NOW(), dob) / 365) AS age_raw, COUNT(*) AS count FROM " . $member->getTableName() . " WHERE dob IS NOT NULL GROUP BY age_raw ORDER BY age_raw ASC";
             $stmt_age = $db->prepare($age_query);
             $stmt_age->execute();
             $age_data_raw = $stmt_age->fetchAll(PDO::FETCH_ASSOC);
@@ -186,19 +208,29 @@ try {
                 else if ($age <= 54) $ageGroup = '45-54';
                 else if ($age <= 64) $ageGroup = '55-64';
                 else $ageGroup = '65+';
-
                 $age_groups_summary[$ageGroup] = ($age_groups_summary[$ageGroup] ?? 0) + $count;
             }
 
-            $prompt = "Write a brief demographic report for " . ucwords(str_replace('_', ' ', $period)) . ". " .
-                "Gender data:\n" . json_encode($gender_data) . "\n" .
-                "Age groups:\n" . json_encode($age_groups_summary) . "\n\n" .
-                "Describe key groups and simple ways the church can use this info.";
+            $prompt = "Generate a demographic insights report. The report should have a clear introduction, body, and conclusion.
+
+**Demographic Data:**
+- Gender Distribution: " . json_encode($gender_data) . "
+- Age Group Distribution: " . json_encode($age_groups_summary) . "
+
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly explain the purpose of the report.
+3.  **Body:**
+    *   Describe the key demographic groups within the church.
+    *   For each key group (e.g., 'Youth', 'Seniors'), provide one simple, actionable insight that is culturally relevant.
+4.  **Conclusion:**
+    *   Summarize the most important demographic insight.
+    *   Suggest how the church can better tailor its programs or communication to serve these demographic groups, keeping the local culture in mind.
+5.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the most important demographic insight, enclosed in <summary> tags.";
             break;
 
         case 'engagement_metrics':
-            $reportTitle = "Member Engagement for " . ucwords(str_replace('_', ' ', $period));
-
+            $reportTitle = "Member Engagement Report";
             $active_members_query = "SELECT COUNT(DISTINCT mid) as active_count FROM " . $member->getTableName() . " WHERE last_login >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
             $stmt_active = $db->prepare($active_members_query);
             $stmt_active->execute();
@@ -212,47 +244,116 @@ try {
             $totalMembers = count($members_array);
             $profile_completion_rate = $totalMembers > 0 ? round(($completed_profile_count / $totalMembers) * 100, 2) : 0;
 
-            $prompt = "Make a short report on member engagement for " . ucwords(str_replace('_', ' ', $period)) . ". " .
-                "Include active members, profile completion, and simple ways to improve participation:\n" .
-                "- Total members: {$totalMembers}\n" .
-                "- Active last 30 days: {$active_count}\n" .
-                "- Profile completion rate: {$profile_completion_rate}%\n";
+            $prompt = "Generate a member engagement report. The report should have a clear introduction, body, and conclusion.
+
+**Engagement Data:**
+- Total Members: {$totalMembers}
+- Active Members (last 30 days): {$active_count}
+- Profile Completion Rate: {$profile_completion_rate}%
+
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly explain the purpose of the report.
+3.  **Body:**
+    *   Clearly present the engagement metrics.
+    *   Analyze what these numbers might indicate about the health of the church community.
+4.  **Conclusion:**
+    *   Summarize the member engagement level.
+    *   Provide 3 concrete and simple ideas to improve member engagement and participation, considering the local context.
+5.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the member engagement level, enclosed in <summary> tags.";
+            break;
+
+        case 'area_report':
+            $reportTitle = "Member Area Report";
+            $locationCounts = [];
+            foreach ($members_array as $mem) {
+                if (!empty($mem['address'])) {
+                    $locationCounts[$mem['address']] = ($locationCounts[$mem['address']] ?? 0) + 1;
+                }
+            }
+            arsort($locationCounts);
+
+            $prompt = "Generate an area report based on the locations of church members. The report should have a clear introduction, body, and conclusion.
+
+**Member Location Data (Address Counts):**
+" . json_encode($locationCounts) . "
+
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly explain the purpose of the report.
+3.  **Body:**
+    *   Analyze the geographic distribution of the members.
+    *   Identify the top 3-5 areas with the highest concentration of members.
+    *   Provide one or two insights about the overall geographic spread of the congregation (e.g., 'highly localized', 'spread across the city', etc.).
+4.  **Conclusion:**
+    *   Summarize the geographic distribution.
+    *   Suggest potential areas for outreach, new small groups, or community events based on the location data, keeping the local context in mind.
+5.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the geographic distribution, enclosed in <summary> tags.";
             break;
 
         case 'custom_analysis':
+            $reportTitle = "Custom Analysis";
             if (!empty($userQuery)) {
-                $reportTitle = "Custom Analysis: " . htmlspecialchars(substr($userQuery, 0, 50)) . (strlen($userQuery) > 50 ? '...' : '');
+                $reportTitle .= ": " . htmlspecialchars(substr($userQuery, 0, 50)) . (strlen($userQuery) > 50 ? '...' : '');
 
-                if ($simpleMode) {
-                    // Just send the user query as prompt (short/simple mode)
-                    $prompt = $userQuery;
-                } else {
-                    // Detailed mode with member data sample
-                    $promptContext = "Based on this query: \"" . htmlspecialchars($userQuery) . "\", ";
+                // Fetch all members
+                $stmt_all_members = $member->getAll();
+                $all_members = $stmt_all_members->fetchAll(PDO::FETCH_ASSOC);
 
-                    $prompt = "Do a custom analysis. " . $promptContext .
-                        "Find patterns or unusual info in this member data:\n\n";
+                // Fetch leadership data
+                include_once __DIR__ . '/models/leadership_role.php';
+                $leadership = new LeadershipRole($db);
+                $stmt_leadership = $leadership->getCurrentLeadership();
+                $leadership_data = $stmt_leadership->fetchAll(PDO::FETCH_ASSOC);
 
-                    $sample_members = array_slice($members_array, 0, 50);
-                    if (empty($sample_members)) {
-                        $prompt .= "No members found. Explain possible reasons.";
-                    } else {
-                        foreach ($sample_members as $s_mem) {
-                            $fullName = trim(($s_mem['first_name'] ?? '') . ' ' . ($s_mem['last_name'] ?? ''));
-                            $prompt .= "- ID: " . $s_mem['mid'] . ", Name: " . $fullName .
-                                ", Gender: " . $s_mem['gender'] . ", DOB: " . $s_mem['dob'] .
-                                ", Address: " . $s_mem['address'] . ", Source: " . $s_mem['source'] .
-                                ", Verified: " . ($s_mem['is_verified'] ? 'Yes' : 'No') . "\n";
+                $prompt = "A church administrator has asked the following question: \""
+                    . htmlspecialchars($userQuery) . "\"
+
+Analyze the provided data to answer the question. The report should have a clear introduction, body, and conclusion, and all insights should be culturally and contextually appropriate.
+
+**All Member Data:**
+";
+                foreach ($all_members as $s_mem) {
+                    $gender = '';
+                    if (isset($s_mem['gender'])) {
+                        if ($s_mem['gender'] === 'M') {
+                            $gender = 'Male';
+                        } elseif ($s_mem['gender'] === 'F') {
+                            $gender = 'Female';
                         }
                     }
-                    $prompt .= "\nGive clear insights and simple recommendations.";
+                    // only include members with gender Male or Female
+                    if ($gender) {
+                        $prompt .= "- Name: {$s_mem['first_name']} {$s_mem['last_name']}, Gender: {$gender}, DOB: {$s_mem['dob']}, Address: {$s_mem['address']}, Source: {$s_mem['source']}
+";
+                    }
                 }
-            } else if (!empty($addressTerm)) {
-                $reportTitle = "Custom Analysis for " . htmlspecialchars($addressTerm) . " (" . ucwords(str_replace('_', ' ', $period)) . ")";
-                $prompt = "Analyze members from '" . htmlspecialchars($addressTerm) . "' area for " . ucwords(str_replace('_', ' ', $period)) . ". Provide key insights and recommendations.";
+                $prompt .= "
+**Leadership Data:**
+";
+                foreach ($leadership_data as $role) {
+                    $prompt .= "- Role: {$role['role_name']}, Description: {$role['description']}
+";
+                    if (!empty($role['assignments'])) {
+                        foreach ($role['assignments'] as $assignment) {
+                            $prompt .= "  - Member: {$assignment['first_name']} {$assignment['last_name']}
+";
+                        }
+                    }
+                }
+
+                $prompt .= "
+**Report Structure and Requirements:**
+1.  **Header:** Start the report with a header containing only 'To:' and 'Subject:'. Do not include 'From:' or 'Date:'.
+2.  **Introduction:** Briefly introduce the user's question.
+3.  **Body:** Directly address the user's question using the provided data.
+4.  **Conclusion:** Summarize the answer to the user's question.
+5.  **Formatting:** Format your response in markdown.
+6.  **Data Sufficiency:** If the data is insufficient to answer the question, explain why and what data would be needed.
+7.  **Scope:** ONLY provide the specific information requested in the user's query. Do not include any additional analysis, patterns, trends, anomalies, or recommendations unless explicitly asked for.
+8.  **Summary Tag:** At the very end of your response, provide a one-sentence summary of the answer to the user's question, enclosed in <summary> tags.";
             } else {
-                $reportTitle = "Custom Analysis for All Members (" . ucwords(str_replace('_', ' ', $period)) . ")";
-                $prompt = "Analyze overall membership data for " . ucwords(str_replace('_', ' ', $period)) . ". Provide key insights and recommendations.";
+                $prompt = "No custom query provided. Please provide a query for analysis.";
             }
             break;
 
@@ -261,15 +362,28 @@ try {
             exit();
     }
 
-    $geminiResponse = callGeminiAPI($prompt);
+    if (empty($prompt)) {
+        echo json_encode(['success' => false, 'message' => 'Prompt could not be generated.']);
+        exit();
+    }
+
+    $geminiResponse = callGeminiAPI($prompt, $geminiApiKey);
 
     if (isset($geminiResponse['candidates'][0]['content']['parts'][0]['text'])) {
         $generatedContent = $geminiResponse['candidates'][0]['content']['parts'][0]['text'];
+
+        $summary = '';
+        if (preg_match('/<summary>(.*?)<\/summary>/s', $generatedContent, $matches)) {
+            $summary = $matches[1];
+            $generatedContent = str_replace($matches[0], '', $generatedContent);
+        }
+
         echo json_encode([
             'success' => true,
             'report' => [
                 'title' => $reportTitle,
-                'content' => $generatedContent,
+                'content' => trim($generatedContent),
+                'summary' => trim($summary),
                 'generated_at' => date('Y-m-d H:i:s')
             ]
         ]);
@@ -280,7 +394,7 @@ try {
         } elseif (isset($geminiResponse['error']['message'])) {
             $errorMessage .= ' Gemini Error: ' . $geminiResponse['error']['message'];
         } else {
-            $errorMessage .= ' Unknown API response.';
+            $errorMessage .= ' Unknown API response. Raw: ' . json_encode($geminiResponse);
             error_log('Gemini API raw response (ai_reports): ' . json_encode($geminiResponse));
         }
         echo json_encode(['success' => false, 'message' => $errorMessage]);
